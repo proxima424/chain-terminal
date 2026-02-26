@@ -1,9 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
-import { Chain, generateHash, generateTxCount } from '../utils/chains'
-import Block, { BlockData } from './Block'
-
-const MAX_BLOCKS = 9
-const INIT_BLOCKS = 4
+import { Chain } from '../utils/chains'
+import Block from './Block'
+import { useBlockStream } from '../hooks/useBlockStream'
 
 interface ConnectorProps {
   color: string
@@ -45,44 +43,12 @@ function Connector({ color, isNew }: ConnectorProps) {
 }
 
 export default function ChainRow({ chain }: { chain: Chain }) {
-  const [blocks, setBlocks] = useState<BlockData[]>([])
-  const [pulseCount, setPulseCount] = useState(0)
-  const heightRef = useRef(chain.startHeight)
+  // ── All data + lifecycle now owned by the hook ──
+  const { blocks, pulseCount } = useBlockStream(chain)
   const trackRef = useRef<HTMLDivElement>(null)
 
-  // TPS display
+  // TPS display (derived from chain config — display only)
   const tps = Math.round(chain.avgTxPerBlock / (chain.blockInterval / 1000))
-
-  useEffect(() => {
-    // Seed with initial historical blocks (no animation)
-    const initial: BlockData[] = Array.from({ length: INIT_BLOCKS }, (_, i) => ({
-      id: `${chain.id}-init-${i}`,
-      height: chain.startHeight - (INIT_BLOCKS - 1 - i),
-      hash: generateHash(),
-      txCount: generateTxCount(chain),
-      timestamp: Date.now() - (INIT_BLOCKS - 1 - i) * chain.blockInterval,
-      isNew: false,
-    }))
-    setBlocks(initial)
-    heightRef.current = chain.startHeight
-
-    // Live block production
-    const interval = setInterval(() => {
-      heightRef.current += 1
-      const newBlock: BlockData = {
-        id: `${chain.id}-${heightRef.current}-${Date.now()}`,
-        height: heightRef.current,
-        hash: generateHash(),
-        txCount: generateTxCount(chain),
-        timestamp: Date.now(),
-        isNew: true,
-      }
-      setBlocks(prev => [...prev.slice(-(MAX_BLOCKS - 1)), newBlock])
-      setPulseCount(c => c + 1)
-    }, chain.blockInterval)
-
-    return () => clearInterval(interval)
-  }, [chain])
 
   // Auto-scroll to show the newest block
   useEffect(() => {
@@ -125,7 +91,7 @@ export default function ChainRow({ chain }: { chain: Chain }) {
       >
         {/* Name row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          {/* Animated pulse dot */}
+          {/* Animated pulse dot — re-keyed on each new block */}
           <div
             key={pulseCount}
             style={{
